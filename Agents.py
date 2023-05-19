@@ -144,9 +144,6 @@ class MySensor:
         print()
 
 
-
-
-
 class IndoorModel(Model):
     def __init__(self, agents_json_path='agents.json', env_map_path='map_2floor_bw.png'):
         super().__init__()
@@ -179,12 +176,13 @@ class IndoorModel(Model):
                     a.reset_waypoints(waypoints)
 
         # добавлены сенсоры из файла
-        array = np.load(
+        self.array = np.load(
             "Src\Src\medicine-data\iBeacon_data\summer_2_floor\points_wifi_2.npy")
-
+        self.sensors_coordinates = []
         for i in range(0, 9):
-            x_coord = array[i][0]
-            y_coord = array[i][1]
+            x_coord = self.array[i][0]
+            y_coord = self.array[i][1]
+            self.sensors_coordinates.append([x_coord, y_coord])
             data_datchik = MySensor(i, (x_coord - hard_dx, y_coord - hard_dy))
             self.sensors_arr.append(data_datchik)
 
@@ -213,6 +211,9 @@ class IndoorModel(Model):
             self.particle_filter()
             print('СРАБОТАЛ ФИЛЬТР')
 
+        if self.step_number > 1:
+            self.triangulation()
+
         # вызов сенсоров для работы по определению уровня сигнала
         self.agents = self.space.get_neighbors((250, 125), 500, True)  # сбор агентов для анализа датчиками
         for sens in self.sensors_arr:
@@ -225,18 +226,34 @@ class IndoorModel(Model):
             plt.plot(self.target[0], self.target[1], 'r+')
 
     def triangulation(self):
-        min_value = 0
-        max_value = 100
-        for agent in self.schedule.agents:
-            signals_for_agent = []
-            for senc in self.sensors_arr:
-                normalized_signal = (senc.array_of_signals[agent.unique_id][-1] - min_value) / (max_value - min_value)
-                signals_for_agent.append(normalized_signal)
+        mean_signals = []
+
+        # находим среднее значение сигнала каждого сенсора и собираем в mean_signals
+        for sens in self.sensors_arr:
+            sum_signals = 0
+            for i in range(len(sens.array_of_signals)):
+                sum_signals += sens.array_of_signals[i][-1]
+            mean_sum = sum_signals / len(self.sensors_arr)
+            mean_signals.append(mean_sum)
+
+        min_value = min(mean_signals)
+        max_value = max(mean_signals)
+
+        # нормализуем уровень сигнала 0 - 100
+        for i in range(0, len(mean_signals)):
+            normalized_signal = (mean_signals.__getitem__(i) - min_value) / (max_value - min_value)
+            mean_signals[i] = normalized_signal
+
+        mean_signals = np.array(mean_signals)  # готовый к работе массив сигналов с датчиков
+        sensors_coordinates = np.array(self.sensors_coordinates)  # готовый к работе массив координат датчиков
 
 
 
-
-
+        triangul = Delaunay(sensors_coordinates)
+        # weights = np.linalg.solve(triangul.transform, mean_signals)
+        weights = mean_signals
+        agent_position = np.average(sensors_coordinates[triangul.simplices], weights=weights)
+        print(agent_position, "позиция по триангуляции")
 
     # фильтр частиц
     def particle_filter(self):
@@ -255,7 +272,7 @@ class IndoorModel(Model):
         # Считаем идеальную точку, как среднюю
         ideal_p_x = np.mean(particles_x)
         ideal_p_y = np.mean(particles_y)
-
+        print(ideal_p_x, " ", ideal_p_y, " позиция средняя")
         # Обновляем вес частиц, основываясь на расстоянии до идеальной точки
         for step in range(len(particles_x)):
             # Считаем Евклидово расстояние между частицей и идеальной точкой
