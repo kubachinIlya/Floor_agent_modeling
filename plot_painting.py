@@ -3,7 +3,7 @@ from random import randint
 import os
 import numpy as np
 # переменная для задания кол-ва агентов на графике
-from Agents import  number_of_agents
+from Agents import number_of_agents
 
 
 # функция берет из файла координаты агента и сохраняет их в два массива
@@ -20,11 +20,13 @@ def reading_coordinates(filename):
     return x_coordinates_f, y_coordinates_f
 
 
+# задание кол-ва агента на графике
 print("input number of agents for a plot, no more than ", number_of_agents)
 number_of_agents_for_a_plot = int(input())
 if number_of_agents_for_a_plot > number_of_agents:
     number_of_agents_for_a_plot = number_of_agents
-# АХАХХАХАХАХАХХАХАХАХАХХА
+
+# добавление координат сенсоров для использования на графике
 array = np.load(
     "Src\Src\medicine-data\iBeacon_data\summer_2_floor\points_wifi_2.npy")
 sensors_x = []
@@ -35,37 +37,49 @@ for i in range(0, 9):
     sensors_x.append(x_coord - 235)
     sensors_y.append(y_coord - 76)
 
-
+# цвета для всех агентов на графике
 colors = []
 for i in range(number_of_agents):
     colors.append('#%06X' % randint(0, 0xFFFFFF))
 
+# Загрузка фона для графика ( картинка больницы)
 img = plt.imread('map_2floor_bw.png')
 fig, ax = plt.subplots()
 ax.imshow(img)
 
-
+# помещаем на график начальных агентов
 for i in range(0, number_of_agents_for_a_plot):
     x_coordinates, y_coordinates = reading_coordinates(i)
     plt.scatter(x_coordinates, y_coordinates, color=str(colors[i]), s=10)
     plt.scatter(sensors_x, sensors_y, color='r', s=30)
     # plt.plot(x_coordinates, y_coordinates, color=str(colors[i]))
 
+# узнаем сколько всего агентов наплодилось
+directory = "way_points_history_for_agents"  # Укажите путь к нужной директории
 
-for i in range(number_of_agents_for_a_plot, number_of_agents_for_a_plot+31):
+# Получаем список всех файлов и директорий в указанной директории
+files = os.listdir(directory)
+
+# Подсчитываем количество файлов
+file_count = len(files)
+
+# помещаем на график агентов - клонов
+for i in range(number_of_agents_for_a_plot, file_count):
     x_coordinates, y_coordinates = reading_coordinates(i)
     plt.scatter(x_coordinates, y_coordinates, color='black', s=10)
     # plt.scatter(sensors_x, sensors_y, color='r', s=30)
     # plt.plot(x_coordinates, y_coordinates, color=str(colors[i]))
 
+# Задаем оси для графика
 plt.ylabel('y_coordinate_of_agent')
 plt.xlabel('x_coordinate_of_agent')
 plt.show()
 
+# удаление файлов истории агентов
 print("Do you want to remove agents_history files? yes/no")
 answer = input()
 if answer == 'yes':
-    for i in range(0, number_of_agents):
+    for i in range(0, file_count):
         os.remove(r".\way_points_history_for_agents\/agent" + str(i) + ".txt")
     print("files have been removed")
 else:

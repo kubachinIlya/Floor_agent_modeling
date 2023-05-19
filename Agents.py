@@ -12,11 +12,13 @@ from mesa.time import RandomActivation
 from mesa.space import ContinuousSpace
 from mesa.datacollection import DataCollector
 from math import sqrt, fabs
+from scipy.spatial import Delaunay
 
-number_of_agents = 8
-num_particles = 8
+# Задаем количество агентов, соответственно количество частиц (это число нужно задать и в самой модели)
+number_of_agents = num_particles = 3
 
 
+# класс окружения агента (физической среды)
 class AgentEnvironmentMap:
     def __init__(self, bw_image_path, dist_per_pix=1.0):
         self.img = image.imread(bw_image_path)
@@ -38,6 +40,7 @@ class AgentEnvironmentMap:
         return '\n'.join([''.join(['#' if m else '.' for m in ln]) for ln in self.wall_mask])
 
 
+# класс агента
 class PhysicalAgent(Agent):
     def __init__(self, unique_id, model, speed_of_agent):
         self.is_moving = True
@@ -55,9 +58,10 @@ class PhysicalAgent(Agent):
         return {'agent': self.pos, 'final_target': self.waypoints[-1],
                 'next_target': self.waypoints[self.next_waypoint_index]}
 
+    # возвращает скорость агента c рандомным отклонением
     def speed_agent(self):
-        random_speed_change = random.uniform(-0.25, 0.25)
-        return self.speed_of_agent
+        random_speed_change = random.uniform(-0.25, 0.25)  # рандомное отклонение агента(ГРАФИК)
+        return self.speed_of_agent + random_speed_change
 
     def step(self):
 
@@ -66,8 +70,8 @@ class PhysicalAgent(Agent):
         while search_target:
             dx = self.waypoints[self.next_waypoint_index][0] - self.pos[0]
             dy = self.waypoints[self.next_waypoint_index][1] - self.pos[1]
-            dx = ((dx * (math.cos(math.radians(randint(-5, 5))))) + (dy * (math.sin(math.radians(randint(-5, 5))))))
-            dy = ((dx * (-math.sin(math.radians(randint(-5, 5))))) + (dy * (math.cos(math.radians(randint(-5, 5))))))
+            dx = ((dx * (math.cos(math.radians(randint(-5, 5))))) + (dy * (math.sin(math.radians(randint(-5, 5))))))  # Отклонение вектора
+            dy = ((dx * (-math.sin(math.radians(randint(-5, 5))))) + (dy * (math.cos(math.radians(randint(-5, 5))))))  # ГРАФИК
             d = np.sqrt(dx * dx + dy * dy)
             if d < TARGET_SENSITIVITY:
                 if self.next_waypoint_index < len(self.waypoints) - 1:
@@ -82,9 +86,10 @@ class PhysicalAgent(Agent):
         if not self.model.env_map.is_wall(new_x, new_y):
             print(
                 f'#{self.unique_id} is moving to ({new_x}, {new_y}) forwards waypoint #{self.next_waypoint_index} with the speed {self.speed_agent()}')
-            print(self.pos)
+            # print(self.pos)
             self.model.space.move_agent(self, (new_x, new_y))
 
+        # запись истории путешествий агента
         my_file = open(r".\way_points_history_for_agents\agent" + str(self.unique_id) + ".txt", "a")
         my_file.write(str(new_x) + " " + str(new_y) + " ")
         my_file.close()
@@ -97,11 +102,13 @@ class MySensor:
         self.pos = pos
         self.array_of_signals = [[] * 1 for _ in range(number_of_agents)]  # массив для хранения сигналов агентов
 
-    def sense_speed(self, agents):
+    def sense_signal(self, agents):
         step_to_go_x = 0.3  # шаг для прохода расстояния между положениями агента по X
         # создаем экземпляр пространства для функции
         map_for_wall = AgentEnvironmentMap('map_2floor_bw.png')
         for agent in agents:
+            if agent.unique_id >= len(self.array_of_signals):
+                self.array_of_signals.append([])
             # начальная и конечная позиции агентов на шаге
             x_starting_point = self.pos[0]
             y_starting_point = self.pos[1]
@@ -111,7 +118,10 @@ class MySensor:
             steps_between_pos = round(fabs((x_end_point - x_starting_point) / step_to_go_x))
 
             # считаем какой нужен шаг по y
-            step_to_go_y = (y_end_point - y_starting_point) / steps_between_pos
+            if steps_between_pos != 0:
+                step_to_go_y = (y_end_point - y_starting_point) / steps_between_pos
+            else:
+                step_to_go_y = 0.3  # в такой ситуации по идее шагов не будет и игрек не изменится
 
             # смотрит какой по знаку шаг по x нам нужен
             if x_end_point < x_starting_point:
@@ -134,10 +144,7 @@ class MySensor:
         print()
 
 
-def triangulation(array_of_signals, sensors_array):
-    for i in range(0, number_of_agents):
-        for sensor in sensors_array:
-            print(array_of_signals[i][-1])
+
 
 
 class IndoorModel(Model):
@@ -150,7 +157,7 @@ class IndoorModel(Model):
         self.space = ContinuousSpace(self.env_map.max_x, self.env_map.max_y, False)
         self.schedule = RandomActivation(self)
         self.sensors_arr = []
-        self.number_ag = 8
+        self.number_ag = 3
 
         with open(agents_json_path) as f:
             agent_json = json.load(f)
@@ -188,31 +195,48 @@ class IndoorModel(Model):
         self.moving_agents_num = 0
         self.running = True
         self.data_collector.collect(self)
-        self.agents = self.space.get_neighbors((250, 125), 500, True)
+        self.agents = []
+        # self.agents = self.space.get_neighbors((250, 125), 500, True)  # сбор агентов для анализа датчиками
 
-        self.step_number = 0
+        self.step_number = 0  # шаг модели для вызова фильтра частиц на определенных шагах
 
     def step(self):
         self.schedule.step()
         self.data_collector.collect(self)
         self.step_number += 1
-        print(self.step_number)
+        # print(self.step_number) вывод номера шага модели
         self.moving_agents_num = sum([a.is_moving for a in self.schedule.agents])
         self.running = self.moving_agents_num > 0
 
-        if self.step_number % 25 == 0:
+        # вызов фильтра частиц на каждом определенном шаге
+        if self.step_number % 5 == 0:
             self.particle_filter()
             print('СРАБОТАЛ ФИЛЬТР')
 
+        # вызов сенсоров для работы по определению уровня сигнала
+        self.agents = self.space.get_neighbors((250, 125), 500, True)  # сбор агентов для анализа датчиками
         for sens in self.sensors_arr:
-            pass
-            # sens.sense_speed(self.agents)
+            sens.sense_signal(self.agents)
 
     def plot_explicitly(self):
         plt.imshow(self.env_map.img)
         for a in self.schedule.agents:
             plt.plot(a.pos[0], a.pos[1], 'bo')
             plt.plot(self.target[0], self.target[1], 'r+')
+
+    def triangulation(self):
+        min_value = 0
+        max_value = 100
+        for agent in self.schedule.agents:
+            signals_for_agent = []
+            for senc in self.sensors_arr:
+                normalized_signal = (senc.array_of_signals[agent.unique_id][-1] - min_value) / (max_value - min_value)
+                signals_for_agent.append(normalized_signal)
+
+
+
+
+
 
     # фильтр частиц
     def particle_filter(self):
@@ -257,7 +281,7 @@ class IndoorModel(Model):
         for i in range(0, len(new_particles)):
             particle = new_particles[i].unique_id
             new_particles_id.append(particle)
-        new_particles_id = sorted(new_particles_id) # Тут лежат отсортированные айдишники агентов, которых мы оставляем
+        new_particles_id = sorted(new_particles_id)  # Тут лежат отсортированные айдишники агентов, которых мы оставляем
 
         # Удаление агентов из планировщика
         for agent in agents_to_remove:
@@ -266,22 +290,15 @@ class IndoorModel(Model):
         new_particles = sorted(new_particles, key=lambda obj: obj.unique_id)
         # пробегаем по айди оставшихся агентов и если айди появляется несколько раз вместо него создаем нового
         k = 0
-        print(*new_particles_id)
+        # print(*new_particles_id)
         for i in range(1, len(new_particles_id)):
-            if new_particles_id[i-1] == new_particles_id[i]:
-                speed = new_particles[i].speed_agent() + random.uniform(-0.3, 0.3)
+            if new_particles_id[i - 1] == new_particles_id[i]:
+                speed = new_particles[i].speed_agent() + random.uniform(-0.3, 0.3)  # берем speed агента клона (ГРАФИК)
                 new_agent = PhysicalAgent(self.number_ag, self, speed)
                 self.schedule.add(new_agent)
-                self.space.place_agent(new_agent, new_particles[i].pos)
+                self.space.place_agent(new_agent, new_particles[i].pos)  # ставим позицию агента клона (ГРАФИК)
                 new_agent.reset_waypoints(new_particles[i].waypoints)
                 new_agent.pos = new_particles[i].pos
                 new_agent.next_waypoint_index = new_particles[i].next_waypoint_index
                 self.number_ag += 1
-
-
-
-
-
-
-
 
