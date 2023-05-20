@@ -13,6 +13,7 @@ from mesa.space import ContinuousSpace
 from mesa.datacollection import DataCollector
 from math import sqrt, fabs
 from scipy.spatial import Delaunay
+from sklearn.linear_model import LinearRegression
 
 # Задаем количество агентов, соответственно количество частиц (это число нужно задать и в самой модели)
 number_of_agents = num_particles = 3
@@ -72,6 +73,55 @@ class PhysicalAgent(Agent):
             dy = self.waypoints[self.next_waypoint_index][1] - self.pos[1]
             dx = ((dx * (math.cos(math.radians(randint(-5, 5))))) + (dy * (math.sin(math.radians(randint(-5, 5))))))  # Отклонение вектора
             dy = ((dx * (-math.sin(math.radians(randint(-5, 5))))) + (dy * (math.cos(math.radians(randint(-5, 5))))))  # ГРАФИК
+            d = np.sqrt(dx * dx + dy * dy)
+            if d < TARGET_SENSITIVITY:
+                if self.next_waypoint_index < len(self.waypoints) - 1:
+                    self.next_waypoint_index += 1
+                else:
+                    self.is_moving = False
+                    return
+            else:
+                search_target = False
+        new_x = self.pos[0] + self.speed_agent() * dx / d
+        new_y = self.pos[1] + self.speed_agent() * dy / d
+        if not self.model.env_map.is_wall(new_x, new_y):
+            print(
+                f'#{self.unique_id} is moving to ({new_x}, {new_y}) forwards waypoint #{self.next_waypoint_index} with the speed {self.speed_agent()}')
+            # print(self.pos)
+            self.model.space.move_agent(self, (new_x, new_y))
+
+        # запись истории путешествий агента
+        my_file = open(r".\way_points_history_for_agents\agent" + str(self.unique_id) + ".txt", "a")
+        my_file.write(str(new_x) + " " + str(new_y) + " ")
+        my_file.close()
+
+
+class IdealAgent(Agent):
+    def __init__(self, unique_id, model):
+        self.is_moving = True
+        super().__init__(unique_id, model)
+        self.speed_of_agent = 2
+
+    def reset_waypoints(self, waypoints=None):
+        if waypoints:
+            self.waypoints = waypoints
+        self.model.space.move_agent(self, self.waypoints[0])
+        self.next_waypoint_index = 1
+        self.is_moving = True
+
+    def get_points_to_show(self):
+        return {'agent': self.pos, 'final_target': self.waypoints[-1],
+                'next_target': self.waypoints[self.next_waypoint_index]}
+
+    def speed_agent(self):
+        return self.speed_of_agent
+
+    def step(self):
+        TARGET_SENSITIVITY = 7
+        search_target = True
+        while search_target:
+            dx = self.waypoints[self.next_waypoint_index][0] - self.pos[0]
+            dy = self.waypoints[self.next_waypoint_index][1] - self.pos[1]
             d = np.sqrt(dx * dx + dy * dy)
             if d < TARGET_SENSITIVITY:
                 if self.next_waypoint_index < len(self.waypoints) - 1:
@@ -158,7 +208,7 @@ class IndoorModel(Model):
 
         with open(agents_json_path) as f:
             agent_json = json.load(f)
-
+        # создание агентов
         for k in range(0, number_of_agents):
             my_file = open(r".\way_points_history_for_agents\agent" + str(k) + ".txt", "w+")
             my_file.close()
@@ -174,6 +224,21 @@ class IndoorModel(Model):
                     self.schedule.add(a)
                     self.space.place_agent(a, waypoints[0])
                     a.reset_waypoints(waypoints)
+        # создание идеального агента
+        my_file = open(r".\way_points_history_for_agents\agent" + str(99999) + ".txt", "w+")
+        my_file.close()
+        waypoints = []
+        for i, aj in enumerate(agent_json):
+            with open(aj['waypoints_path']) as f:
+                lns = f.readlines()
+                for ln in lns:
+                    parts = re.findall('\d+', ln)
+                    waypoints.append((int(parts[0].strip()) - hard_dx, int(parts[1].strip()) - hard_dy))
+        ideal_ag = IdealAgent(99999, self)
+        self.schedule.add(ideal_ag)
+        self.space.place_agent(ideal_ag, waypoints[0])
+        ideal_ag.reset_waypoints(waypoints)
+
 
         # добавлены сенсоры из файла
         self.array = np.load(
@@ -211,11 +276,16 @@ class IndoorModel(Model):
             self.particle_filter()
             print('СРАБОТАЛ ФИЛЬТР')
 
-        if self.step_number > 1:
-            self.triangulation()
+        # if self.step_number > 1:
+        #    self.triangulation()
 
         # вызов сенсоров для работы по определению уровня сигнала
         self.agents = self.space.get_neighbors((250, 125), 500, True)  # сбор агентов для анализа датчиками
+        for agent in self.agents:
+            if agent.unique_id == 99999:
+                print("removed")
+                self.agents.remove(agent)
+                break
         for sens in self.sensors_arr:
             sens.sense_signal(self.agents)
 
@@ -226,7 +296,7 @@ class IndoorModel(Model):
             plt.plot(self.target[0], self.target[1], 'r+')
 
     def triangulation(self):
-        mean_signals = []
+        mean_signals = []  # Храним средние значения сигнала каждого сенсора для всех агентов на шаге модели
 
         # находим среднее значение сигнала каждого сенсора и собираем в mean_signals
         for sens in self.sensors_arr:
@@ -236,24 +306,25 @@ class IndoorModel(Model):
             mean_sum = sum_signals / len(self.sensors_arr)
             mean_signals.append(mean_sum)
 
+        # минимальное и максимальное значения сигнала для нормализации типа min - max
         min_value = min(mean_signals)
         max_value = max(mean_signals)
 
-        # нормализуем уровень сигнала 0 - 100
+        # нормализуем уровень сигнала range( 0 - 1 )
         for i in range(0, len(mean_signals)):
             normalized_signal = (mean_signals.__getitem__(i) - min_value) / (max_value - min_value)
             mean_signals[i] = normalized_signal
 
-        mean_signals = np.array(mean_signals)  # готовый к работе массив сигналов с датчиков
-        sensors_coordinates = np.array(self.sensors_coordinates)  # готовый к работе массив координат датчиков
+        # готовые массив сигналов сенсоров, массив координат сенсоров для реализации триангуляции
+        mean_signals = np.array(mean_signals)
+        sensors_coordinates = np.array(self.sensors_coordinates)
 
-
-
+        # Это часть кода не работает
         triangul = Delaunay(sensors_coordinates)
-        # weights = np.linalg.solve(triangul.transform, mean_signals)
-        weights = mean_signals
+        weights = np.linalg.solve(triangul.transform, mean_signals)
         agent_position = np.average(sensors_coordinates[triangul.simplices], weights=weights)
         print(agent_position, "позиция по триангуляции")
+        # конец неработающей части
 
     # фильтр частиц
     def particle_filter(self):
@@ -262,7 +333,13 @@ class IndoorModel(Model):
         particles_y = []
 
         # Инициализация частиц (собираем координаты агентов в массивы)
-        for agent in self.schedule.agents:
+        agent_for_particles = self.schedule.agents
+        for agent in agent_for_particles:
+            if agent.unique_id == 99999:
+                agent_for_particles.remove(agent)
+                break
+
+        for agent in agent_for_particles:
             particle_x = agent.pos[0]
             particle_y = agent.pos[1]
             particles_x.append(particle_x)
@@ -270,8 +347,25 @@ class IndoorModel(Model):
             particle_weights.append(1)
 
         # Считаем идеальную точку, как среднюю
-        ideal_p_x = np.mean(particles_x)
-        ideal_p_y = np.mean(particles_y)
+        # ideal_p_x = np.mean(particles_x)
+        # ideal_p_y = np.mean(particles_y)
+
+        # считаем идеальную точку линейной регрессией
+        # Create an array of corresponding indices for the particles
+        indices_x = np.arange(len(particles_x)).reshape(-1, 1)
+        indices_y = np.arange(len(particles_y)).reshape(-1, 1)
+        # Initialize and fit the linear regression model
+        regression_model_x = LinearRegression()
+        regression_model_y = LinearRegression()
+        regression_model_x.fit(indices_x, particles_x)
+        regression_model_y.fit(indices_y, particles_y)
+        # Predict the values based on the linear regression model
+        predicted_p_x = regression_model_x.predict(indices_x)
+        predicted_p_y = regression_model_y.predict(indices_y)
+        # Calculate the ideal_p_x as the mean of the predicted values
+        ideal_p_x = np.mean(predicted_p_x)
+        ideal_p_y = np.mean(predicted_p_y)
+
         print(ideal_p_x, " ", ideal_p_y, " позиция средняя")
         # Обновляем вес частиц, основываясь на расстоянии до идеальной точки
         for step in range(len(particles_x)):
@@ -289,7 +383,7 @@ class IndoorModel(Model):
         # Удаление агентов, не попавших в выборку
         agents_to_remove = []  # Список для агентов, которые нужно удалить
         for agent in self.schedule.agents:
-            if agent not in new_particles:
+            if agent not in new_particles and agent.unique_id != 99999:
                 agents_to_remove.append(agent)  # Добавление агента в список для удаления
 
         new_particles_id = []  # айди агентов, которые остались после сортировки( могут совпадать)

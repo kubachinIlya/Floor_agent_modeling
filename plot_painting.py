@@ -64,11 +64,16 @@ files = os.listdir(directory)
 file_count = len(files)
 
 # помещаем на график агентов - клонов
-for i in range(number_of_agents_for_a_plot, file_count):
+for i in range(number_of_agents_for_a_plot, file_count-1):
     x_coordinates, y_coordinates = reading_coordinates(i)
     plt.scatter(x_coordinates, y_coordinates, color='black', s=10)
     # plt.scatter(sensors_x, sensors_y, color='r', s=30)
     # plt.plot(x_coordinates, y_coordinates, color=str(colors[i]))
+
+
+x_coordinates_ideal, y_coordinates_ideal = reading_coordinates(99999)
+plt.scatter(x_coordinates_ideal, y_coordinates_ideal, color='blue', marker='s', s=20)
+
 
 # Задаем оси для графика
 plt.ylabel('y_coordinate_of_agent')
