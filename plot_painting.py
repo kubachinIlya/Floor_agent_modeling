@@ -72,8 +72,10 @@ for i in range(number_of_agents_for_a_plot, file_count-1):
 
 
 x_coordinates_ideal, y_coordinates_ideal = reading_coordinates(99999)
-plt.scatter(x_coordinates_ideal, y_coordinates_ideal, color='blue', marker='s', s=20)
-
+print(x_coordinates_ideal)
+# plt.scatter(x_coordinates_ideal, y_coordinates_ideal, color='blue', marker='s', s=20)
+plt.scatter(x_coordinates_ideal, y_coordinates_ideal, color='blue', marker='s', s=20, alpha=0.5)
+plt.plot(x_coordinates_ideal, y_coordinates_ideal, color='blue', alpha=0.5)
 
 # Задаем оси для графика
 plt.ylabel('y_coordinate_of_agent')
@@ -84,8 +86,9 @@ plt.show()
 print("Do you want to remove agents_history files? yes/no")
 answer = input()
 if answer == 'yes':
-    for i in range(0, file_count):
+    for i in range(0, file_count-1):
         os.remove(r".\way_points_history_for_agents\/agent" + str(i) + ".txt")
+    os.remove(r".\way_points_history_for_agents/agent99999.txt")
     print("files have been removed")
 else:
     print("files still there")

@@ -9,7 +9,6 @@ from Agents import IndoorModel
 class IndoorVisualCanvas(VisualizationElement):
     local_includes = ["simple_continuous_canvas.js"]
 
-
     def __init__(self, portrayal_method, canvas_height=1500, canvas_width=1500, bg_path=None):
         super().__init__()
         self.portrayal_method = portrayal_method
@@ -50,7 +49,7 @@ class RunningAgentsNum(TextElement):
         return f'Running agents: {model.moving_agents_num}'
 
 
-def agent_portayal(a):
+def agent_portrayal(a):
     cl = '#00FF00' if a.is_moving else '#0000FF'
     return {'Shape': 'circle', 'r': 4, 'Filled': 'true', 'Color': cl}
 
@@ -60,7 +59,7 @@ with open(bg_path, "rb") as img_file:
     b64_string = base64.b64encode(img_file.read())
 
 running_counter_element = RunningAgentsNum()
-canvas_element = IndoorVisualCanvas(agent_portayal, 250, 600, 'data:image/png;base64, ' + b64_string.decode('utf-8'))
+canvas_element = IndoorVisualCanvas(agent_portrayal, 250, 600, 'data:image/png;base64, ' + b64_string.decode('utf-8'))
 
 
 model_params = {
