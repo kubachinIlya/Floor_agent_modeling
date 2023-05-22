@@ -16,7 +16,7 @@ from scipy.spatial import Delaunay
 from sklearn.linear_model import LinearRegression
 
 # Задаем количество агентов, соответственно количество частиц (это число нужно задать и в самой модели)
-number_of_agents = num_particles = 15
+number_of_agents = num_particles = 10
 
 
 # класс окружения агента (физической среды)
@@ -66,13 +66,18 @@ class PhysicalAgent(Agent):
 
     def step(self):
 
-        TARGET_SENSITIVITY = 3
+        TARGET_SENSITIVITY = 5
         search_target = True
         while search_target:
             dx = self.waypoints[self.next_waypoint_index][0] - self.pos[0]
             dy = self.waypoints[self.next_waypoint_index][1] - self.pos[1]
-            dx = ((dx * (math.cos(math.radians(randint(-15, 15))))) + (dy * (math.sin(math.radians(randint(-15, 15))))))  # Отклонение вектора
-            dy = ((dx * (-math.sin(math.radians(randint(-15, 15))))) + (dy * (math.cos(math.radians(randint(-15, 15))))))  # ГРАФИК
+            # dx = ((dx * (math.cos(math.radians(randint(-15, 15))))) + (dy * (math.sin(math.radians(randint(-15, 15))))))  # Отклонение вектора
+            # dy = ((dx * (-math.sin(math.radians(randint(-15, 15))))) + (dy * (math.cos(math.radians(randint(-15, 15))))))  # ГРАФИК
+            dx = ((dx * (math.cos(math.radians(int(random.gauss(0, 15)))))) + (
+                        dy * (math.sin(math.radians(int(random.gauss(0, 15)))))))  # Отклонение вектора
+            dy = ((dx * (-math.sin(math.radians(int(random.gauss(0, 15)))))) + (
+                        dy * (math.cos(math.radians(int(random.gauss(0, 15)))))))
+
             d = np.sqrt(dx * dx + dy * dy)
             if d < TARGET_SENSITIVITY:
                 if self.next_waypoint_index < len(self.waypoints) - 1:
@@ -107,6 +112,9 @@ class IdealAgent(Agent):
         при скорости 1 - 538-539 шагов
         при скорости 2 -271 шаг
         """""
+
+    def model_time(self):
+        return self.agent_step_number
 
     def reset_waypoints(self, waypoints=None):
         if waypoints:
@@ -173,7 +181,7 @@ class MySensor:
             y_end_point = agent.pos[1]
 
             steps_between_pos = round(fabs((x_end_point - x_starting_point) / step_to_go_x))
-
+            distance = sqrt((x_starting_point - x_end_point)**2 + (y_starting_point - y_end_point)**2)
             # считаем какой нужен шаг по y
             if steps_between_pos != 0:
                 step_to_go_y = (y_end_point - y_starting_point) / steps_between_pos
@@ -186,19 +194,19 @@ class MySensor:
             else:
                 step_to_go_x = 0.3
 
-            level_of_signal_for_array = 100
+            level_of_signal_for_array = 0.1
 
             for i in range(0, steps_between_pos):
                 x_starting_point += step_to_go_x
                 y_starting_point += step_to_go_y
                 if AgentEnvironmentMap.is_wall(map_for_wall, x_starting_point, y_starting_point):
-                    level_of_signal_for_array -= 0.3  # ЗА СТЕНУ ОТНЯЛИ 0.3 от сигнала
+                    distance += 0.15  # ЗА СТЕНУ ОТНЯЛИ 0.3 от сигнала
                 else:
-                    level_of_signal_for_array -= 0.1  # ЗА ПРОСТРАНСТВО 0.1 от сигнала
-
-            self.array_of_signals[agent.unique_id].append(level_of_signal_for_array)
-        print(*self.array_of_signals)
-        print()
+                    level_of_signal_for_array += 0.0  # ЗА ПРОСТРАНСТВО 0.1 от сигнала
+            # print(self.unique_id, " ", 1/level_of_signal_for_array, "steps:", steps_between_pos)
+            self.array_of_signals[agent.unique_id].append(1/distance)
+        # print(*self.array_of_signals)
+        # print()
 
 
 class IndoorModel(Model):
@@ -211,7 +219,7 @@ class IndoorModel(Model):
         self.space = ContinuousSpace(self.env_map.max_x, self.env_map.max_y, False)
         self.schedule = RandomActivation(self)
         self.sensors_arr = []
-        self.number_ag = 15
+        self.number_ag = 10
 
         with open(agents_json_path) as f:
             agent_json = json.load(f)
@@ -226,7 +234,7 @@ class IndoorModel(Model):
                     for ln in lns:
                         parts = re.findall('\d+', ln)
                         waypoints.append((int(parts[0].strip()) - hard_dx, int(parts[1].strip()) - hard_dy))
-                    speed = random.uniform(3, 6)  # задаем начальную скорость, график
+                    speed = random.uniform(3, 7)  # задаем начальную скорость, график
                     a = PhysicalAgent(k, self, speed)
                     self.schedule.add(a)
                     self.space.place_agent(a, waypoints[0])
@@ -254,7 +262,7 @@ class IndoorModel(Model):
         for i in range(0, 9):
             x_coord = self.array[i][0]
             y_coord = self.array[i][1]
-            self.sensors_coordinates.append([x_coord, y_coord])
+            self.sensors_coordinates.append([x_coord - hard_dx, y_coord - hard_dy])
             data_datchik = MySensor(i, (x_coord - hard_dx, y_coord - hard_dy))
             self.sensors_arr.append(data_datchik)
 
@@ -272,30 +280,34 @@ class IndoorModel(Model):
 
     def step(self):
         self.schedule.step()
+        # print(self.schedule.time, "это время")
         self.data_collector.collect(self)
         self.step_number += 1
         # print(self.step_number) вывод номера шага модели
         self.moving_agents_num = sum([a.is_moving for a in self.schedule.agents])
         self.running = self.moving_agents_num > 0
-
+        checker_for_moving = False
         self.agents = self.schedule.agents
         for agent in self.agents:
             if agent.unique_id == 99999:
                 self.agents.remove(agent)
+            if agent.is_moving == True and agent.unique_id != 99999:
+                checker_for_moving = True
 
         # вызов фильтра частиц на каждом определенном шаге ГРАФИК
-        if self.step_number % 20 == 0:
+        if self.step_number % 7 == 0 and checker_for_moving == True:
             self.particle_filter(self.agents)
             print('СРАБОТАЛ ФИЛЬТР')
 
-        if self.step_number > 1:
-            pass
-            # self.triangulation()
+        # вызов сенсоров для работы по определению уровня сигнала ПРОПИСАТЬ ЕСЛИ ЕЩЕ ЕСТЬ АГЕНТЫ
+        if checker_for_moving:
+            for sens in self.sensors_arr:
+                sens.sense_signal(self.agents)
+        # вызов триангуляции
+        if checker_for_moving:
+            if self.step_number > 1:
+                self.triangulation()
 
-        # вызов сенсоров для работы по определению уровня сигнала
-        for sens in self.sensors_arr:
-            pass
-            # sens.sense_signal(self.agents)
 
     def plot_explicitly(self):
         plt.imshow(self.env_map.img)
@@ -309,11 +321,12 @@ class IndoorModel(Model):
         # находим среднее значение сигнала каждого сенсора и собираем в mean_signals
         for sens in self.sensors_arr:
             sum_signals = 0
-            for i in range(len(sens.array_of_signals)):
+            for i in range(0, len(sens.array_of_signals)):
                 sum_signals += sens.array_of_signals[i][-1]
-            mean_sum = sum_signals / len(self.sensors_arr)
+                # print(sens.array_of_signals[i][-1])
+            mean_sum = sum_signals / len(sens.array_of_signals)
             mean_signals.append(mean_sum)
-
+        # print(*mean_signals, " сигналы в триангуляции средние")
         # минимальное и максимальное значения сигнала для нормализации типа min - max
         min_value = min(mean_signals)
         max_value = max(mean_signals)
@@ -321,35 +334,36 @@ class IndoorModel(Model):
         # нормализуем уровень сигнала range( 0 - 1 )
         for i in range(0, len(mean_signals)):
             normalized_signal = (mean_signals.__getitem__(i) - min_value) / (max_value - min_value)
+            # normalized_signal = (mean_signals.__getitem__(i) - min_value) / (max_value - min_value) * 2 - 1
             mean_signals[i] = normalized_signal
-
+        # print(mean_signals, "нормализованные сигналы в триангуляции")
         # готовые массив сигналов сенсоров, массив координат сенсоров для реализации триангуляции
         # Тут можно сделать срез, чтобы получить разное количество датчиков ( ГРАФИК)
         mean_signals = np.array(mean_signals)
         sensors_coordinates = np.array(self.sensors_coordinates)
 
-        # Это часть кода не работает\
         agent_position_x = 0
         agent_position_y = 0
-        array_three_signals = []
-        array_three_coord = []
-        # получаем индексы отсортированного массива
-        sorted_indices = np.argsort(-mean_signals)
-        # выбираем первые три индекса для получения номеров
-        top_indices = sorted_indices[:3]
-        array_three_signals.append(mean_signals[top_indices[0]])
-        array_three_signals.append(mean_signals[top_indices[1]])
-        array_three_signals.append(mean_signals[top_indices[2]])
-        array_three_coord.append(sensors_coordinates[top_indices[0]])
-        array_three_coord.append(sensors_coordinates[top_indices[1]])
-        array_three_coord.append(sensors_coordinates[top_indices[2]])
+        # Нормализуем веса датчиков
+        weight_sum = sum(mean_signals)
+        sensors_weights = [weight / weight_sum for weight in mean_signals]
+        max_indices = sorted(range(len(sensors_weights)), key=lambda i: sensors_weights[i])[-3:]
+        max_weights = sorted(sensors_weights)[-3:]
+
+        """""
         for i in range(0, 3):
-            pass
-
-
+            agent_position_x += max_weights[i] * sensors_coordinates[max_indices[i]][0]
+            agent_position_y += max_weights[i] * sensors_coordinates[max_indices[i]][1]
+       """""
+        for i in range(0, 9):
+            agent_position_x += sensors_weights[i] * sensors_coordinates[i][0]
+            agent_position_y += sensors_weights[i] * sensors_coordinates[i][1]
+        # конец неработающей части
 
         print(agent_position_x, agent_position_y, "позиция по триангуляции")
-        # конец неработающей части
+        my_file = open(r".\triangulation.txt", "a")
+        my_file.write(str(agent_position_x) + " " + str(agent_position_y) + " ")
+        my_file.close()
 
     # фильтр частиц
     def particle_filter(self, agent_for_particles):

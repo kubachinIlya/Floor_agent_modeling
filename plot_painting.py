@@ -20,6 +20,19 @@ def reading_coordinates(filename):
     return x_coordinates_f, y_coordinates_f
 
 
+def reading_files(filename):
+    x_coordinates_f = []
+    y_coordinates_f = []
+    text_file = open(filename)
+    lines = text_file.read().split(' ')
+#    print(lines)
+    for i in range(0, len(lines) - 1, 2):
+        x_coordinates_f.append(float(lines[i]))
+        y_coordinates_f.append(float(lines[i + 1]))
+    text_file.close()
+    return x_coordinates_f, y_coordinates_f
+
+
 # задание кол-ва агента на графике
 print("input number of agents for a plot, no more than ", number_of_agents)
 number_of_agents_for_a_plot = int(input())
@@ -77,6 +90,12 @@ print(x_coordinates_ideal)
 plt.scatter(x_coordinates_ideal, y_coordinates_ideal, color='blue', marker='s', s=20, alpha=0.5)
 plt.plot(x_coordinates_ideal, y_coordinates_ideal, color='blue', alpha=0.5)
 
+x_triangulation, y_triangulation = reading_files("triangulation.txt")
+plt.scatter(x_triangulation, y_triangulation, color='pink', marker='s', s=30, alpha=0.5)
+plt.plot(x_triangulation, y_triangulation, color='pink', alpha=0.5)
+
+
+
 # Задаем оси для графика
 plt.ylabel('y_coordinate_of_agent')
 plt.xlabel('x_coordinate_of_agent')
@@ -89,6 +108,7 @@ if answer == 'yes':
     for i in range(0, file_count-1):
         os.remove(r".\way_points_history_for_agents\/agent" + str(i) + ".txt")
     os.remove(r".\way_points_history_for_agents/agent99999.txt")
+    os.remove(r".\counter_new_waves.txt")
     print("files have been removed")
 else:
     print("files still there")
