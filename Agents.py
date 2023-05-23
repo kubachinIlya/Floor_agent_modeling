@@ -158,6 +158,9 @@ class IdealAgent(Agent):
         my_file = open(r".\way_points_history_for_agents\agent" + str(self.unique_id) + ".txt", "a")
         my_file.write(str(new_x) + " " + str(new_y) + " ")
         my_file.close()
+        my_file = open(r".\ideal_agent.txt", "a")
+        my_file.write(str(self.agent_step_number) + " ")
+        my_file.close()
 
 
 class MySensor:
@@ -200,7 +203,7 @@ class MySensor:
                 x_starting_point += step_to_go_x
                 y_starting_point += step_to_go_y
                 if AgentEnvironmentMap.is_wall(map_for_wall, x_starting_point, y_starting_point):
-                    distance += 0.15  # ЗА СТЕНУ ОТНЯЛИ 0.3 от сигнала
+                    distance += 0  # ЗА СТЕНУ ОТНЯЛИ 0.3 от сигнала
                 else:
                     level_of_signal_for_array += 0.0  # ЗА ПРОСТРАНСТВО 0.1 от сигнала
             # print(self.unique_id, " ", 1/level_of_signal_for_array, "steps:", steps_between_pos)
@@ -239,6 +242,7 @@ class IndoorModel(Model):
                     self.schedule.add(a)
                     self.space.place_agent(a, waypoints[0])
                     a.reset_waypoints(waypoints)
+
         # создание идеального агента
         my_file = open(r".\way_points_history_for_agents\agent" + str(99999) + ".txt", "w+")
         my_file.close()
@@ -291,11 +295,11 @@ class IndoorModel(Model):
         for agent in self.agents:
             if agent.unique_id == 99999:
                 self.agents.remove(agent)
-            if agent.is_moving == True and agent.unique_id != 99999:
+            if agent.is_moving and agent.unique_id != 99999:
                 checker_for_moving = True
 
         # вызов фильтра частиц на каждом определенном шаге ГРАФИК
-        if self.step_number % 7 == 0 and checker_for_moving == True:
+        if self.step_number % 7 == 0 and checker_for_moving:
             self.particle_filter(self.agents)
             print('СРАБОТАЛ ФИЛЬТР')
 
@@ -305,9 +309,46 @@ class IndoorModel(Model):
                 sens.sense_signal(self.agents)
         # вызов триангуляции
         if checker_for_moving:
-            if self.step_number > 1:
+            if self.step_number > 0:
                 self.triangulation()
 
+        self.mean_coord(self.agents)
+
+
+    def mean_coord(self, agent_for_particles):
+        particle_weights = []
+        particles_x = []
+        particles_y = []
+        for agent in agent_for_particles:
+            particle_x = agent.pos[0]
+            particle_y = agent.pos[1]
+            particles_x.append(particle_x)
+            particles_y.append(particle_y)
+            particle_weights.append(1)
+
+        # Считаем идеальную точку, как среднюю
+        # ideal_p_x_a = np.mean(particles_x)
+        # ideal_p_y_a = np.mean(particles_y)
+        # print(ideal_p_x_a, ideal_p_y_a, "позиция среднее арифметическое(не используется в фильтре)")
+
+        # считаем идеальную точку линейной регрессией
+        # Create an array of corresponding indices for the particles
+        indices_x = np.arange(len(particles_x)).reshape(-1, 1)
+        indices_y = np.arange(len(particles_y)).reshape(-1, 1)
+        # Initialize and fit the linear regression model
+        regression_model_x = LinearRegression()
+        regression_model_y = LinearRegression()
+        regression_model_x.fit(indices_x, particles_x)
+        regression_model_y.fit(indices_y, particles_y)
+        # Predict the values based on the linear regression model
+        predicted_p_x = regression_model_x.predict(indices_x)
+        predicted_p_y = regression_model_y.predict(indices_y)
+        # Calculate the ideal_p_x as the mean of the predicted values
+        ideal_p_x = np.mean(predicted_p_x)
+        ideal_p_y = np.mean(predicted_p_y)
+        my_file = open(r".\mean_position.txt", "a")
+        my_file.write(str(ideal_p_x) + " " + str(ideal_p_y) + " ")
+        my_file.close()
 
     def plot_explicitly(self):
         plt.imshow(self.env_map.img)
@@ -350,15 +391,17 @@ class IndoorModel(Model):
         max_indices = sorted(range(len(sensors_weights)), key=lambda i: sensors_weights[i])[-3:]
         max_weights = sorted(sensors_weights)[-3:]
 
-        """""
+        for i in range(0, 3):
+            max_weights[i] = max_weights[i]/(sum(max_weights))
         for i in range(0, 3):
             agent_position_x += max_weights[i] * sensors_coordinates[max_indices[i]][0]
             agent_position_y += max_weights[i] * sensors_coordinates[max_indices[i]][1]
-       """""
+        """""
         for i in range(0, 9):
             agent_position_x += sensors_weights[i] * sensors_coordinates[i][0]
             agent_position_y += sensors_weights[i] * sensors_coordinates[i][1]
         # конец неработающей части
+        """""
 
         print(agent_position_x, agent_position_y, "позиция по триангуляции")
         my_file = open(r".\triangulation.txt", "a")
