@@ -1,34 +1,45 @@
-import numpy as np
-#103.27757521981862   161.72645050977144  позиция с помощью линейной регрессии
-signals =[1.0, -0.6558002937530238, -0.7959170302523281, -0.8857052157668401,
-          -0.9499427781936607, -0.9678739408251552, -0.9749334964680662, -0.9825073367056923, -1.0]
+a = ([[82.6356901331763], [191.286078339731]])
 
-sensors_coord = [[89, 176], [150, 143], [165, 77], [230, 97], [292, 76], [353, 100], [385, 75], [425, 99], [513, 159]]
+x, y = a[0][0], a[1][0]
+print(x, y)
+
+x, y = sympy.symbols("x y", real=True)
+
+eq1 = sympy.Eq((sensors_coordinates[0][0] - x) ** 2 + (sensors_coordinates[0][1] - y) ** 2, distances[0] ** 2)
+eq2 = sympy.Eq((sensors_coordinates[1][0] - x) ** 2 + (sensors_coordinates[1][1] - y) ** 2, distances[1] ** 2)
+eq3 = sympy.Eq((sensors_coordinates[2][0] - x) ** 2 + (sensors_coordinates[2][1] - y) ** 2, distances[2] ** 2)
+
+x_coordinates_f = []
+y_coordinates_f = []
 
 
-arr = [4, 8, 2, 5, 1, 6, 7, 3]
-max_indices = sorted(range(len(arr)), key=lambda i: arr[i])[-3:]
-max_values = sorted(arr)[-3:]
 
-print(max_indices)
-print(max_values)
 
-p1 = np.array([1, 2])
-p2 = np.array([4, 5])
-p3 = np.array([7, 8])
+TARGET_SENSITIVITY = 5
+search_target = True
+while search_target:
+    dx = self.waypoints[self.next_waypoint_index][0] - self.pos[0]
+    dy = self.waypoints[self.next_waypoint_index][1] - self.pos[1]
+    # dx = ((dx * (math.cos(math.radians(randint(-15, 15))))) + (dy * (math.sin(math.radians(randint(-15, 15))))))  # Отклонение вектора
+    # dy = ((dx * (-math.sin(math.radians(randint(-15, 15))))) + (dy * (math.cos(math.radians(randint(-15, 15))))))  # ГРАФИК
+    dx = ((dx * (math.cos(math.radians(int(random.gauss(0, 15)))))) + (
+            dy * (math.sin(math.radians(int(random.gauss(0, 15)))))))  # Отклонение вектора
+    dy = ((dx * (-math.sin(math.radians(int(random.gauss(0, 15)))))) + (
+            dy * (math.cos(math.radians(int(random.gauss(0, 15)))))))
 
-# расстояния от объекта до каждого датчика
-d1 = 2
-d2 = 3
-d3 = 4
-from scipy.spatial import Delaunay
-# оценка позиции объекта с помощью триангуляции
-points = np.array([p1, p2, p3], dtype='float')
-tri = Delaunay(points)
-p = np.array([d1, d2, d3])
-b = np.ones((len(points), 1))
-A = np.hstack((points - points[0, :], p[:, np.newaxis]))
-x = np.linalg.lstsq(A, b, rcond=None)[0].flatten()
-object_pos = points[0, :] + x[:2] * d1
-
-print(object_pos)
+    d = np.sqrt(dx * dx + dy * dy)
+    if d < TARGET_SENSITIVITY:
+        if self.next_waypoint_index < len(self.waypoints) - 1:
+            self.next_waypoint_index += 1
+        else:
+            self.is_moving = False
+            return
+    else:
+        search_target = False
+new_x = self.pos[0] + self.speed_agent() * dx / d
+new_y = self.pos[1] + self.speed_agent() * dy / d
+if not self.model.env_map.is_wall(new_x, new_y):
+    print(
+        f'#{self.unique_id} is moving to ({new_x}, {new_y}) forwards waypoint #{self.next_waypoint_index} with the speed {self.speed_agent()}')
+    # print(self.pos)
+    self.model.space.move_agent(self, (new_x, new_y))

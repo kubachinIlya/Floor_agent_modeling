@@ -94,8 +94,6 @@ x_triangulation, y_triangulation = reading_files("triangulation.txt")
 plt.scatter(x_triangulation, y_triangulation, color='pink', marker='s', s=30, alpha=0.5)
 plt.plot(x_triangulation, y_triangulation, color='pink', alpha=0.5)
 
-
-
 # Задаем оси для графика
 plt.ylabel('y_coordinate_of_agent')
 plt.xlabel('x_coordinate_of_agent')

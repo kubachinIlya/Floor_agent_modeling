@@ -31,6 +31,7 @@ def reading_ideal(filename):
     text_file.close()
     return step_number
 
+
 distances = []
 
 triang_x, triang_y = reading_coordinates("triangulation.txt")
@@ -42,8 +43,9 @@ for i in range(0, len(triang_x)):
     distances.append(d)
 
 ideal_step = ideal_step[:(len(distances))]
-plt.scatter(distances, ideal_step, color='blue', marker='s', s=20, alpha=0.5)
-plt.plot(distances, ideal_step, color='blue', alpha=0.5)
+
+plt.scatter(ideal_step, distances, color='blue', marker='s', s=20, alpha=0.5)
+plt.plot(ideal_step, distances, color='blue', alpha=0.5)
 plt.ylabel('Distance')
 plt.xlabel('Time')
 plt.show()

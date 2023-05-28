@@ -12,8 +12,9 @@ from mesa.time import RandomActivation
 from mesa.space import ContinuousSpace
 from mesa.datacollection import DataCollector
 from math import sqrt, fabs
-from scipy.spatial import Delaunay
 from sklearn.linear_model import LinearRegression
+import sympy
+from scipy.optimize import least_squares
 
 # Задаем количество агентов, соответственно количество частиц (это число нужно задать и в самой модели)
 number_of_agents = num_particles = 10
@@ -203,7 +204,7 @@ class MySensor:
                 x_starting_point += step_to_go_x
                 y_starting_point += step_to_go_y
                 if AgentEnvironmentMap.is_wall(map_for_wall, x_starting_point, y_starting_point):
-                    distance += 0  # ЗА СТЕНУ ОТНЯЛИ 0.3 от сигнала
+                    distance += random.uniform(0, 0.12)  # ЗА СТЕНУ ОТНЯЛИ 0.3 от сигнала
                 else:
                     level_of_signal_for_array += 0.0  # ЗА ПРОСТРАНСТВО 0.1 от сигнала
             # print(self.unique_id, " ", 1/level_of_signal_for_array, "steps:", steps_between_pos)
@@ -223,6 +224,8 @@ class IndoorModel(Model):
         self.schedule = RandomActivation(self)
         self.sensors_arr = []
         self.number_ag = 10
+        self.last_triangul = (80, 185)
+        self.x_triangulation, self.y_triangulation = self.reading_files("triangulation.txt")
 
         with open(agents_json_path) as f:
             agent_json = json.load(f)
@@ -298,11 +301,12 @@ class IndoorModel(Model):
             if agent.is_moving and agent.unique_id != 99999:
                 checker_for_moving = True
 
+
         # вызов фильтра частиц на каждом определенном шаге ГРАФИК
-        if self.step_number % 7 == 0 and checker_for_moving:
+        if self.step_number % 5 == 0 and checker_for_moving:
             self.particle_filter(self.agents)
             print('СРАБОТАЛ ФИЛЬТР')
-
+        """
         # вызов сенсоров для работы по определению уровня сигнала ПРОПИСАТЬ ЕСЛИ ЕЩЕ ЕСТЬ АГЕНТЫ
         if checker_for_moving:
             for sens in self.sensors_arr:
@@ -311,8 +315,20 @@ class IndoorModel(Model):
         if checker_for_moving:
             if self.step_number > 0:
                 self.triangulation()
-
+        """
         self.mean_coord(self.agents)
+
+    def reading_files(self, filename):
+        x_coordinates_f = []
+        y_coordinates_f = []
+        text_file = open(filename)
+        lines = text_file.read().split(' ')
+        #    print(lines)
+        for i in range(0, len(lines) - 1, 2):
+            x_coordinates_f.append(float(lines[i]))
+            y_coordinates_f.append(float(lines[i + 1]))
+        text_file.close()
+        return x_coordinates_f, y_coordinates_f
 
 
     def mean_coord(self, agent_for_particles):
@@ -325,11 +341,6 @@ class IndoorModel(Model):
             particles_x.append(particle_x)
             particles_y.append(particle_y)
             particle_weights.append(1)
-
-        # Считаем идеальную точку, как среднюю
-        # ideal_p_x_a = np.mean(particles_x)
-        # ideal_p_y_a = np.mean(particles_y)
-        # print(ideal_p_x_a, ideal_p_y_a, "позиция среднее арифметическое(не используется в фильтре)")
 
         # считаем идеальную точку линейной регрессией
         # Create an array of corresponding indices for the particles
@@ -346,6 +357,7 @@ class IndoorModel(Model):
         # Calculate the ideal_p_x as the mean of the predicted values
         ideal_p_x = np.mean(predicted_p_x)
         ideal_p_y = np.mean(predicted_p_y)
+        print(ideal_p_x, " ", ideal_p_y, " координаты регрессией")
         my_file = open(r".\mean_position.txt", "a")
         my_file.write(str(ideal_p_x) + " " + str(ideal_p_y) + " ")
         my_file.close()
@@ -367,46 +379,44 @@ class IndoorModel(Model):
                 # print(sens.array_of_signals[i][-1])
             mean_sum = sum_signals / len(sens.array_of_signals)
             mean_signals.append(mean_sum)
-        # print(*mean_signals, " сигналы в триангуляции средние")
-        # минимальное и максимальное значения сигнала для нормализации типа min - max
-        min_value = min(mean_signals)
-        max_value = max(mean_signals)
 
-        # нормализуем уровень сигнала range( 0 - 1 )
-        for i in range(0, len(mean_signals)):
-            normalized_signal = (mean_signals.__getitem__(i) - min_value) / (max_value - min_value)
-            # normalized_signal = (mean_signals.__getitem__(i) - min_value) / (max_value - min_value) * 2 - 1
-            mean_signals[i] = normalized_signal
-        # print(mean_signals, "нормализованные сигналы в триангуляции")
-        # готовые массив сигналов сенсоров, массив координат сенсоров для реализации триангуляции
-        # Тут можно сделать срез, чтобы получить разное количество датчиков ( ГРАФИК)
-        mean_signals = np.array(mean_signals)
-        sensors_coordinates = np.array(self.sensors_coordinates)
+        max_indices = sorted(range(len(mean_signals)), key=lambda i: mean_signals[i])[-3:]
+        max_signals = sorted(mean_signals)[-3:]
+        max_signals = np.array(max_signals)  # три максимальных сигнала
+        sensors_coordinates = []
+
+        distances = []
+        """
+        for i in range(0, 3):
+            distances.append(1/max_signals[i])
+        for k in range(0, 3):
+            sensors_coordinates.append(self.sensors_coordinates[max_indices[k]])
+        sensors_coordinates = np.array(sensors_coordinates)
+        """
+        for i in range(0, 9):
+            distances.append(1 / mean_signals[i])
+        for k in range(0, 9):
+            sensors_coordinates.append(self.sensors_coordinates[k])
+        sensors_coordinates = np.array(sensors_coordinates)
 
         agent_position_x = 0
         agent_position_y = 0
-        # Нормализуем веса датчиков
-        weight_sum = sum(mean_signals)
-        sensors_weights = [weight / weight_sum for weight in mean_signals]
-        max_indices = sorted(range(len(sensors_weights)), key=lambda i: sensors_weights[i])[-3:]
-        max_weights = sorted(sensors_weights)[-3:]
 
-        for i in range(0, 3):
-            max_weights[i] = max_weights[i]/(sum(max_weights))
-        for i in range(0, 3):
-            agent_position_x += max_weights[i] * sensors_coordinates[max_indices[i]][0]
-            agent_position_y += max_weights[i] * sensors_coordinates[max_indices[i]][1]
-        """""
-        for i in range(0, 9):
-            agent_position_x += sensors_weights[i] * sensors_coordinates[i][0]
-            agent_position_y += sensors_weights[i] * sensors_coordinates[i][1]
-        # конец неработающей части
-        """""
+        # Определяем функцию, которую будем минимизировать
+        def fun(x):
+            return np.sqrt((x[0] - sensors_coordinates[:, 0]) ** 2 + (x[1] - sensors_coordinates[:, 1]) ** 2) - distances
 
+        # Определяем начальное значение и запускаем алгоритм минимизации
+        x0 = np.array(self.last_triangul)
+        res = least_squares(fun, x0)
+        print(res.x)
+        agent_position_x, agent_position_y = res.x
+        self.last_triangul = agent_position_x, agent_position_y
         print(agent_position_x, agent_position_y, "позиция по триангуляции")
         my_file = open(r".\triangulation.txt", "a")
         my_file.write(str(agent_position_x) + " " + str(agent_position_y) + " ")
         my_file.close()
+
 
     # фильтр частиц
     def particle_filter(self, agent_for_particles):
@@ -441,6 +451,8 @@ class IndoorModel(Model):
         # Calculate the ideal_p_x as the mean of the predicted values
         ideal_p_x = np.mean(predicted_p_x)
         ideal_p_y = np.mean(predicted_p_y)
+        ideal_p_x = self.x_triangulation[self.step_number]
+        ideal_p_y = self.y_triangulation[self.step_number]
 
         print(ideal_p_x, " ", ideal_p_y, " позиция с помощью линейной регрессии")
         # Обновляем вес частиц, основываясь на расстоянии до идеальной точки
